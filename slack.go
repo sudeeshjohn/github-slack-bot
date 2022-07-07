@@ -53,14 +53,14 @@ func (b *Bot) Start() error {
 				return
 			}
 			if len(action) == 0 {
-				response.Reply("you must specify what action need to be taken")
+				response.Reply("you must specify what action need to be taken") //nolint:errcheck
 				return
 			}
 
 			user := request.StringParam("user", "")
 			log.Debug().Str("user", user).Msg("Received github id ")
 			if len(user) == 0 || len(strings.Fields(user)) > 1 {
-				response.Reply("You must specify a user")
+				response.Reply("You must specify a user") //nolint:errcheck
 				return
 			}
 			params, err := parseOptions(request.StringParam("options", ""), supportedMemberOptions)
@@ -68,10 +68,21 @@ func (b *Bot) Start() error {
 				response.Reply(err.Error())
 				return
 			}
+
+			if len(params["team"]) > 0 {
+				if contains(params["team"], "admin") || contains(params["team"], "Admin") {
+					response.Reply("You are not prevailed to update `admin` team") //nolint:errcheck
+					return
+				}
+			}
+			/*if strings.EqualFold(params["team"], "admin") || strings.EqualFold(params["team"], "admins") {
+				response.Reply("You are not prevailed to update `admin` team") //nolint:errcheck
+				return
+			}*/
 			memAct := &MemberAction{
 				UserName: user,
 				Action:   action,
-				Team:     params["team"],
+				Team:     strings.Join(params["team"], ","),
 			}
 			githubAct := GithubActions{
 				Organization: githubOrg,
@@ -90,10 +101,12 @@ func (b *Bot) Start() error {
 	})
 
 	bot.Command("issue <action>  <state_or_id> <options>", &slacker.CommandDefinition{
-		Description: fmt.Sprintf("Run the requested action %s on gihub issue with different options like %s ", strings.Join(codeSlice(supportedIssueActions), ", "), strings.Join(codeSlice(supportedIssueOptions), ", ")),
-		Example:     "issue get 234;   issue list assignedto user=sudeeshjohn;   issues list open noupdatesince=2021-01-01",
+		Description: fmt.Sprintf("Run the requested action %s on gihub issues with different options like %s ", strings.Join(codeSlice(supportedIssueActions), ", "), strings.Join(codeSlice(supportedIssueOptions), ", ")),
+		Example:     "1) issue get 234  2) issue list assignedto user=sudeeshjohn;noupdatesince=2022-07-01;labels=bug  3) issues list open noupdatesince=2022-07-01",
 		Handler: func(botCtx slacker.BotContext, request slacker.Request, response slacker.ResponseWriter) {
 			var err error
+			var usr string
+			var noupdate string
 			githubOrg := os.Getenv("GITHUB_ORG")
 			githubRepo := os.Getenv("GITHUB_REPO")
 			//user := botCtx.Event().User
@@ -129,18 +142,24 @@ func (b *Bot) Start() error {
 			}
 			if len(params["noupdatesince"]) != 0 {
 
-				if !isDateValue(params["noupdatesince"]) {
+				if !isDateValue(params["noupdatesince"][0]) {
 					msg := "invalid date string, msg me `help` for example\""
 					response.Reply(msg)
 					return
 				}
+				noupdate = strings.Join(params["noupdatesince"], ",")
 			}
+			if len(params["user"]) > 0 {
+				usr = strings.Join(params["user"], ",")
+			}
+
 			IssueAct := &IssueAction{
 				Number:      number,
 				State:       state,
 				Action:      action,
-				UserName:    params["user"],
-				LastUpdated: params["noupdatesince"],
+				UserName:    usr,
+				LastUpdated: noupdate,
+				Labels:      params["labels"],
 			}
 			githubAct := GithubActions{
 				Organization: githubOrg,
@@ -224,8 +243,9 @@ func parseActions(action string, supportedActions []string) (string, error) {
 	act := strings.TrimSpace(action)
 	return act, nil
 }
-func parseOptions(options string, supportedOptions []string) (map[string]string, error) {
+func parseOptions(options string, supportedOptions []string) (map[string][]string, error) {
 	params, err := paramsFromAnnotation(options)
+	fmt.Printf("params from parse: %s", params)
 	if err != nil {
 		return nil, fmt.Errorf("options could not be parsed: %v", err)
 	}
@@ -244,25 +264,27 @@ func parseOptions(options string, supportedOptions []string) (map[string]string,
 	}
 	return params, nil
 }
-func paramsFromAnnotation(value string) (map[string]string, error) {
-	values := make(map[string]string)
-	if len(value) == 0 {
+func paramsFromAnnotation(str string) (map[string][]string, error) {
+	values := make(map[string][]string)
+	if len(str) == 0 {
 		return values, nil
 	}
-	for _, part := range strings.Split(value, ",") {
+
+	for _, part := range strings.Split(str, ";") {
 		if len(part) == 0 {
 			return nil, fmt.Errorf("parameter may not be empty")
 		}
 		parts := strings.SplitN(part, "=", 2)
 		key := strings.TrimSpace(parts[0])
+		value := parts[1]
 		if len(key) == 0 {
 			return nil, fmt.Errorf("parameter name may not be empty")
 		}
 		if len(parts) == 1 {
-			values[key] = ""
+			values[key] = make([]string, 0)
 			continue
 		}
-		values[key] = parts[1]
+		values[key] = append(values[key], value)
 	}
 	return values, nil
 }

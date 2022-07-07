@@ -20,6 +20,7 @@ type IssueAction struct {
 	Action      string
 	UserName    string
 	LastUpdated string
+	Labels      []string
 }
 type MemberAction struct {
 	UserName string
@@ -35,7 +36,7 @@ type GithubActions struct {
 
 var supportedIssueStates = []string{"open", "closed", "assigned", "unassigned", "assignedto", "createdby"}
 var supportedIssueActions = []string{"get", "list"}
-var supportedIssueOptions = []string{"user", "noupdatesince"}
+var supportedIssueOptions = []string{"user", "noupdatesince", "labels"}
 var supportedMemberActions = []string{"get", "add"}
 var supportedMemberOptions = []string{"team"}
 var statesNeedsUserName = []string{"assignedto", "createdby"}
@@ -173,16 +174,20 @@ func (g GithubActions) actOnIssue() (bool, []string, string, error) {
 		if !stat {
 			return false, issueList, "Unknown Options", fmt.Errorf("unknown inputs, Error:%s", err)
 		}
-		stat, message, err = validateUser(g.Issue.UserName, g.Organization)
-		if !stat {
-			return false, issueList, message, fmt.Errorf("invalid user name. Error: %s", err)
+		if len(g.Issue.UserName) > 0 {
+			stat, message, err = validateUser(g.Issue.UserName, g.Organization)
+			if !stat {
+				return false, issueList, message, fmt.Errorf("invalid user name. Error: %s", err)
+			}
 		}
 		if len(g.Issue.LastUpdated) > 0 {
 			if !isDateValue(g.Issue.LastUpdated) {
 				return false, issueList, message, fmt.Errorf("Invalid date string. Date string must be in 2021-06-01 format")
 			}
 		}
-
+		if len(g.Issue.Labels) > 0 {
+			options.Labels = g.Issue.Labels
+		}
 		switch {
 		case g.Issue.State == "createdby":
 			options.State = "open"
