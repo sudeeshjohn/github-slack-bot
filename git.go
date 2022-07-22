@@ -14,6 +14,10 @@ import (
 	"time"
 )
 
+type LabelAction struct {
+	IssueNumber int
+	Action      string
+}
 type IssueAction struct {
 	Number      int
 	State       string
@@ -32,16 +36,17 @@ type GithubActions struct {
 	Repository   string
 	Issue        *IssueAction
 	Member       *MemberAction
+	Label        *LabelAction
 }
 
 var supportedIssueStates = []string{"open", "closed", "assigned", "unassigned", "assignedto", "createdby"}
 var supportedIssueActions = []string{"get", "list"}
+var supportedLabelActions = []string{"get", "list"}
+var supportedLabelOptions = []string{"issue"}
 var supportedIssueOptions = []string{"user", "noupdatesince", "labels"}
 var supportedMemberActions = []string{"get", "add"}
 var supportedMemberOptions = []string{"team"}
 var statesNeedsUserName = []string{"assignedto", "createdby"}
-
-//var availableStates = []string{"open", "closed", "assigned", "unassigned"}
 
 func getGitClient() (*github.Client, context.Context, error) {
 	// Initilizing git client
@@ -81,6 +86,31 @@ func validateUser(userName string, organization string) (bool, string, error) {
 			return false, reason, err
 		} else {
 			log.Info().Msg(fmt.Sprintf("User found: %s", userName))
+			return true, "", nil
+		}
+	}
+}
+
+func validateIssue(issueNumber int, repository string, organization string) (bool, string, error) {
+
+	var err error
+	var reason string
+	client, ctx, err := getGitClient()
+	if err != nil {
+		return false, "Internal Error", fmt.Errorf("unable update New github client, Error: %s", err)
+	} else {
+		_, res, err := client.Issues.Get(ctx, organization, repository, issueNumber)
+		if err != nil {
+			reason = "Unknown Issue"
+			log.Info().Msg(fmt.Sprintf("Unable to find issue `%d`, in the repo `%s`", issueNumber, repository))
+			return false, reason, err
+		}
+		if res.StatusCode != 200 {
+			log.Info().Msg(fmt.Sprintf("Unable to find issue `%d`, in the repo `%s`", issueNumber, repository))
+			reason = "Unknown User"
+			return false, reason, err
+		} else {
+			log.Info().Msg(fmt.Sprintf("User found: %d", issueNumber))
 			return true, "", nil
 		}
 	}
@@ -151,11 +181,50 @@ func (g GithubActions) actOnMember() (bool, string, error) {
 	//return true, "", nil
 }
 
+func (g GithubActions) actOnLabel() (bool, []string, string, error) {
+	var labelList []string
+	var message string
+	var err error
+	var stat bool
+	stat, message, err = g.validateRepoAndOrg()
+	if !stat {
+		return false, labelList, message, fmt.Errorf("invalid org/repo. Error: %s", err)
+	}
+	stat, err = g.validateInputs()
+	if !stat {
+		return false, labelList, "Unknown Options", fmt.Errorf("unknown inputs, Error:%s", err)
+	}
+	switch {
+	case g.Label.Action == "get":
+		if g.Label.IssueNumber > 0 {
+			stat, message, err = validateIssue(g.Label.IssueNumber, g.Repository, g.Organization)
+			if !stat {
+				return false, labelList, message, fmt.Errorf("invalid issue. Error: %s", err)
+			}
+		}
+		labelList, _, err = ListLabelsByIssue(g.Organization, g.Repository, g.Label.IssueNumber)
+		return true, labelList, message, nil
+
+	case g.Label.Action == "list":
+		labelList, message, err = ListLabels(g.Organization, g.Repository)
+		if err != nil {
+			return false, labelList, message, err
+		}
+		return true, labelList, message, nil
+	default:
+		return false, labelList, "", fmt.Errorf("unknown Action")
+	}
+}
+
 func (g GithubActions) actOnIssue() (bool, []string, string, error) {
 	var issueList []string
 	var message string
 	var err error
 	var since time.Time
+	stat, message, err := g.validateRepoAndOrg()
+	if !stat {
+		return false, issueList, message, fmt.Errorf("invalid org/repo. Error: %s", err)
+	}
 	switch {
 	case g.Issue.Action == "list":
 		var lstOpt *github.ListOptions
@@ -163,10 +232,6 @@ func (g GithubActions) actOnIssue() (bool, []string, string, error) {
 		var options *github.IssueListByRepoOptions
 		options = &github.IssueListByRepoOptions{ListOptions: *lstOpt}
 
-		stat, message, err := g.validateRepoAndOrg()
-		if !stat {
-			return false, issueList, message, fmt.Errorf("invalid org/repo. Error: %s", err)
-		}
 		if len(g.Issue.LastUpdated) != 0 {
 			since, _ = time.Parse("2006-01-02", g.Issue.LastUpdated)
 		}
@@ -245,7 +310,68 @@ func (g GithubActions) actOnIssue() (bool, []string, string, error) {
 	}
 	return true, issueList, "", nil
 }
-
+func ListLabelsByIssue(Org string, Repo string, Issue int) ([]string, string, error) {
+	var labelList []string
+	var message string
+	lstopt := &github.ListOptions{
+		Page:    1,
+		PerPage: 100,
+	}
+	client, ctx, err := getGitClient()
+	if err != nil {
+		return nil, "Internal Error", fmt.Errorf("unable update New github client, Error: %s", err)
+	}
+	for {
+		labels, resp, err := client.Issues.ListLabelsByIssue(ctx, Org, Repo, Issue, lstopt)
+		if err != nil {
+			return nil, "Internal Error", fmt.Errorf("getting labels failed, Error: %s", err)
+		}
+		if len(labels) > 0 {
+			for _, label := range labels {
+				labelList = append(labelList, fmt.Sprintf("*<%s|%s>*\t*`%s`*\n", label.GetURL(), *label.Name, *label.Description))
+			}
+		} else {
+			message = fmt.Sprintf("No labels found in Org: `\"%s\"`, Repo: `\"%s\"`", Org, Repo)
+			return labelList, message, fmt.Errorf("no lables found, Error: %s", err)
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		lstopt.Page = resp.NextPage
+	}
+	return labelList, fmt.Sprintf("%d labels found", len(labelList)), err
+}
+func ListLabels(Org string, Repo string) ([]string, string, error) {
+	var labelList []string
+	var message string
+	lstopt := &github.ListOptions{
+		Page:    1,
+		PerPage: 100,
+	}
+	client, ctx, err := getGitClient()
+	if err != nil {
+		return nil, "Internal Error", fmt.Errorf("unable update New github client, Error: %s", err)
+	}
+	for {
+		labels, resp, err := client.Issues.ListLabels(ctx, Org, Repo, lstopt)
+		if err != nil {
+			return nil, "Internal Error", fmt.Errorf("getting labels failed, Error: %s", err)
+		}
+		if len(labels) > 0 {
+			for _, label := range labels {
+				labelList = append(labelList, fmt.Sprintf("*<%s|%s>*\t*`%s`*\n", label.GetURL(), *label.Name, *label.Description))
+			}
+		} else {
+			message = fmt.Sprintf("No labels found in Org: `\"%s\"`, Repo: `\"%s\"`", Org, Repo)
+			return labelList, message, fmt.Errorf("no lables found, Error: %s", err)
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		lstopt.Page = resp.NextPage
+	}
+	return labelList, fmt.Sprintf("%d labels found", len(labelList)), err
+}
 func issuesListByRepo(opts *github.IssueListByRepoOptions, Org string, Repo string, since time.Time) ([]string, string, error) {
 	var issueList []string
 	var message string
@@ -514,9 +640,6 @@ func (g GithubActions) validateInputs() (bool, error) {
 		if len(g.Issue.UserName) == 0 && contains(statesNeedsUserName, g.Issue.State) {
 			return false, fmt.Errorf("`%s` requires github user name as input", g.Issue.State)
 		}
-		/*if len(g.Issue.UserName) != 0 && contains(availableStates, g.Issue.State) {
-			return false, fmt.Errorf("`%s` does not require github user name as input", g.Issue.State)
-		}*/
 		if g.Issue.Action == "get" && g.Issue.Number == 0 {
 			return false, fmt.Errorf("`%s` expects an issue number as input", g.Issue.Action)
 		}

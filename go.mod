@@ -1,4 +1,4 @@
-module github.ibm.com/sudeeshjohn/github-slack-bot
+module github.com/sudeeshjohn/github-slack-bot
 
 go 1.18
 

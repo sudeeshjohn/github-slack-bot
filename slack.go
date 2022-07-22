@@ -31,7 +31,7 @@ func (b *Bot) Start() error {
 		}
 	})
 
-	bot.Command("member <action>  <user> <options>", &slacker.CommandDefinition{
+	bot.Command("member <action> <user> <options>", &slacker.CommandDefinition{
 		Description: fmt.Sprintf("Run the requested action %s on gihub user ", strings.Join(codeSlice(supportedMemberActions), ", ")),
 		Example:     "member add sudeeshjohn team=storage",
 		Handler: func(botCtx slacker.BotContext, request slacker.Request, response slacker.ResponseWriter) {
@@ -215,10 +215,111 @@ func (b *Bot) Start() error {
 		},
 	})
 
+	bot.Command("labels <action>  <options>", &slacker.CommandDefinition{
+		Description: fmt.Sprintf("Run the requested action %s on gihub labels with different options like %s ", strings.Join(codeSlice(supportedLabelActions), ", "), strings.Join(codeSlice(supportedLabelOptions), ", ")),
+		Example:     "1) labels list  2) labels get 234",
+		Handler: func(botCtx slacker.BotContext, request slacker.Request, response slacker.ResponseWriter) {
+			var err error
+			var issueNumber int
+			githubOrg := os.Getenv("GITHUB_ORG")
+			githubRepo := os.Getenv("GITHUB_REPO")
+			//user := botCtx.Event().User
+			channel := botCtx.Event().Channel
+			attachments := []slack.Attachment{}
+			if !isDirectMessage(channel) {
+				err := response.Reply("this command is only accepted via direct message")
+				if err != nil {
+					log.Info().Msg("this command is only accepted via direct message")
+				}
+				return
+			}
+			action, err := parseActions(request.StringParam("action", ""), supportedLabelActions)
+			if err != nil {
+				response.Reply(err.Error())
+				return
+			}
+			if len(action) == 0 {
+				response.Reply("you must specify what action need to be taken")
+				return
+			}
+
+			params, err := parseOptions(request.StringParam("options", ""), supportedLabelOptions)
+			if err != nil {
+				response.Reply(err.Error())
+				return
+			}
+			if len(params["issue"]) != 0 {
+				iss := strings.Join(params["issue"], ",")
+				issueNumber, err = strconv.Atoi(iss)
+				if err != nil {
+					response.Reply(err.Error())
+					return
+				}
+			}
+
+			LabelAct := &LabelAction{
+				IssueNumber: issueNumber,
+				Action:      action,
+			}
+			githubAct := GithubActions{
+				Organization: githubOrg,
+				Repository:   githubRepo,
+				Issue:        nil,
+				Member:       nil,
+				Label:        LabelAct,
+			}
+
+			status, labelList, msg, err := githubAct.actOnLabel()
+			if status {
+				if len(labelList) != 0 {
+					var list string
+					response.Reply(msg)
+					count := 60
+					for i := 0; i < len(labelList); i++ {
+						attachments = []slack.Attachment{}
+						if i < count {
+							list = list + fmt.Sprintf(fmt.Sprintf(labelList[i]))
+
+						} else {
+							attachments = append(attachments, slack.Attachment{
+								ID:   count,
+								Text: list,
+							})
+							log.Debug().Msg(fmt.Sprintf("list : %s", list))
+							response.Reply("", slacker.WithAttachments(attachments))
+							count = count + 60
+							list = ""
+							i = i - 1
+						}
+					}
+					attachments = append(attachments, slack.Attachment{
+						ID:   count,
+						Text: list,
+					})
+					log.Debug().Msg(fmt.Sprintf("list : %s", list))
+					response.Reply("", slacker.WithAttachments(attachments))
+
+				} else {
+					attachments = []slack.Attachment{}
+
+					attachments = append(attachments, slack.Attachment{
+						ID:   1,
+						Text: msg,
+					})
+					response.Reply("", slacker.WithAttachments(attachments))
+
+				}
+				return
+			} else {
+				response.Reply(err.Error())
+			}
+		},
+	})
+
 	bot.Command("version", &slacker.CommandDefinition{
 		Description: "Report the version of the bot",
 		Handler: func(botCtx slacker.BotContext, request slacker.Request, response slacker.ResponseWriter) {
-			err := response.Reply(fmt.Sprintf("Running from https://github.ibm.com/sudeeshjohn/github-slack-bot"))
+			err := response.Reply(fmt.Sprintf("Running from https://github.com/sudeeshjohn/github-slack-bot"))
 			if err != nil {
 				log.Info().Msg("Unable to send the slack message")
 			}
@@ -266,6 +367,7 @@ func parseOptions(options string, supportedOptions []string) (map[string][]strin
 }
 func paramsFromAnnotation(str string) (map[string][]string, error) {
 	values := make(map[string][]string)
+	var value string
 	if len(str) == 0 {
 		return values, nil
 	}
@@ -276,7 +378,9 @@ func paramsFromAnnotation(str string) (map[string][]string, error) {
 		}
 		parts := strings.SplitN(part, "=", 2)
 		key := strings.TrimSpace(parts[0])
-		value := parts[1]
+		if len(parts) > 1 {
+			value = parts[1]
+		}
 		if len(key) == 0 {
 			return nil, fmt.Errorf("parameter name may not be empty")
 		}
@@ -318,8 +422,3 @@ func codeSlice(items []string) []string {
 	}
 	return code
 }
-
-/*func isDateValue(stringDate string) bool {
-	_, err := time.Parse("2006-01-02", stringDate)
-	return err == nil
-}*/
