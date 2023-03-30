@@ -7,6 +7,7 @@ import (
 	"github.com/shomali11/slacker"
 	"github.com/slack-go/slack"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -86,6 +87,7 @@ func (b *Bot) Start() error {
 			githubAct := GithubActions{
 				Organization: githubOrg,
 				Repository:   githubRepo,
+				Issue:        nil,
 				Member:       memAct,
 			}
 			status, msg, err := githubAct.actOnMember()
@@ -144,6 +146,222 @@ func (b *Bot) Start() error {
 						attachments = []slack.Attachment{}
 						if i < count {
 							list = list + fmt.Sprintf(fmt.Sprintf(teamList[i]))
+
+						} else {
+							attachments = append(attachments, slack.Attachment{
+								ID:   count,
+								Text: list,
+							})
+							log.Debug().Msg(fmt.Sprintf("list : %s", list))
+							response.Reply("", slacker.WithAttachments(attachments))
+							count = count + 60
+							list = ""
+							i = i - 1
+						}
+					}
+					attachments = append(attachments, slack.Attachment{
+						ID:   count,
+						Text: list,
+					})
+					log.Debug().Msg(fmt.Sprintf("list : %s", list))
+					response.Reply("", slacker.WithAttachments(attachments))
+
+				} else {
+					attachments = []slack.Attachment{}
+
+					attachments = append(attachments, slack.Attachment{
+						ID:   1,
+						Text: msg,
+					})
+					response.Reply("", slacker.WithAttachments(attachments))
+
+				}
+				return
+			} else {
+				response.Reply(err.Error())
+			}
+		},
+	})
+
+	bot.Command("labels <action>  <options>", &slacker.CommandDefinition{
+		Description: fmt.Sprintf("Run the requested action %s on github labels with different options like %s ", strings.Join(codeSlice(supportedLabelActions), ", "), strings.Join(codeSlice(supportedLabelOptions), ", ")),
+		Example:     "1) labels list  2) labels get 234",
+		Handler: func(botCtx slacker.BotContext, request slacker.Request, response slacker.ResponseWriter) {
+			var err error
+			var issueNumber int
+			githubOrg := os.Getenv("GITHUB_ORG")
+			githubRepo := os.Getenv("GITHUB_REPO")
+			//user := botCtx.Event().User
+			channel := botCtx.Event().Channel
+			attachments := []slack.Attachment{}
+			if !isDirectMessage(channel) {
+				err := response.Reply("this command is only accepted via direct message")
+				if err != nil {
+					log.Info().Msg("this command is only accepted via direct message")
+				}
+				return
+			}
+			action, err := parseActions(request.StringParam("action", ""), supportedLabelActions)
+			if err != nil {
+				response.Reply(err.Error())
+				return
+			}
+			if len(action) == 0 {
+				response.Reply("you must specify what action need to be taken")
+				return
+			}
+
+			params, err := parseOptions(request.StringParam("options", ""), supportedLabelOptions)
+			if err != nil {
+				response.Reply(err.Error())
+				return
+			}
+			if len(params["issue"]) != 0 {
+				iss := strings.Join(params["issue"], ",")
+				issueNumber, err = strconv.Atoi(iss)
+				if err != nil {
+					response.Reply(err.Error())
+					return
+				}
+			}
+
+			LabelAct := &LabelAction{
+				IssueNumber: issueNumber,
+				Action:      action,
+			}
+			githubAct := GithubActions{
+				Organization: githubOrg,
+				Repository:   githubRepo,
+				Issue:        nil,
+				Member:       nil,
+				Label:        LabelAct,
+			}
+
+			status, labelList, msg, err := githubAct.actOnLabel()
+			if status {
+				if len(labelList) != 0 {
+					var list string
+					response.Reply(msg)
+					count := 60
+					for i := 0; i < len(labelList); i++ {
+						attachments = []slack.Attachment{}
+						if i < count {
+							list = list + fmt.Sprintf(fmt.Sprintf(labelList[i]))
+
+						} else {
+							attachments = append(attachments, slack.Attachment{
+								ID:   count,
+								Text: list,
+							})
+							log.Debug().Msg(fmt.Sprintf("list : %s", list))
+							response.Reply("", slacker.WithAttachments(attachments))
+							count = count + 60
+							list = ""
+							i = i - 1
+						}
+					}
+					attachments = append(attachments, slack.Attachment{
+						ID:   count,
+						Text: list,
+					})
+					log.Debug().Msg(fmt.Sprintf("list : %s", list))
+					response.Reply("", slacker.WithAttachments(attachments))
+
+				} else {
+					attachments = []slack.Attachment{}
+
+					attachments = append(attachments, slack.Attachment{
+						ID:   1,
+						Text: msg,
+					})
+					response.Reply("", slacker.WithAttachments(attachments))
+
+				}
+				return
+			} else {
+				response.Reply(err.Error())
+			}
+		},
+	})
+
+	bot.Command("issue <action> <state_or_id> <options>", &slacker.CommandDefinition{
+		Description: fmt.Sprintf("Run the requested action %s on github issues with different options like %s ", strings.Join(codeSlice(supportedIssueActions), ", "), strings.Join(codeSlice(supportedIssueOptions), ", ")),
+		Example:     "1) issue get 234  2) issue list assignedto user=johns;noupdatesince=2022-07-01;labels=bug  3) issue list open noupdatesince=2022-07-01",
+		Handler: func(botCtx slacker.BotContext, request slacker.Request, response slacker.ResponseWriter) {
+			var err error
+			var usr string
+			var noupdate string
+			githubOrg := os.Getenv("GITHUB_ORG")
+			githubRepo := os.Getenv("GITHUB_REPO")
+			//user := botCtx.Event().User
+			channel := botCtx.Event().Channel
+			attachments := []slack.Attachment{}
+			if !isDirectMessage(channel) {
+				err := response.Reply("this command is only accepted via direct message")
+				if err != nil {
+					log.Info().Msg("this command is only accepted via direct message")
+				}
+				return
+			}
+			action, err := parseActions(request.StringParam("action", ""), supportedIssueActions)
+			if err != nil {
+				response.Reply(err.Error())
+				return
+			}
+			if len(action) == 0 {
+				response.Reply("you must specify what action need to be taken")
+				return
+			}
+
+			state, number, err := parseIssueState(request.StringParam("state_or_id", ""))
+			if err != nil {
+				response.Reply(err.Error())
+				return
+			}
+
+			params, err := parseOptions(request.StringParam("options", ""), supportedIssueOptions)
+			if err != nil {
+				response.Reply(err.Error())
+				return
+			}
+			if len(params["noupdatesince"]) != 0 {
+
+				if !isDateValue(params["noupdatesince"][0]) {
+					msg := "invalid date string, msg me `help` for example\""
+					response.Reply(msg)
+					return
+				}
+				noupdate = strings.Join(params["noupdatesince"], ",")
+			}
+			if len(params["user"]) > 0 {
+				usr = strings.Join(params["user"], ",")
+			}
+
+			IssueAct := &IssueAction{
+				Number:      number,
+				State:       state,
+				Action:      action,
+				UserName:    usr,
+				LastUpdated: noupdate,
+				Labels:      params["labels"],
+			}
+			githubAct := GithubActions{
+				Organization: githubOrg,
+				Repository:   githubRepo,
+				Issue:        IssueAct,
+				Member:       nil,
+			}
+
+			status, issueList, msg, err := githubAct.actOnIssue()
+			if status {
+				if len(issueList) != 0 {
+					var list string
+					response.Reply(msg)
+					count := 60
+					for i := 0; i < len(issueList); i++ {
+						attachments = []slack.Attachment{}
+						if i < count {
+							list = list + fmt.Sprintf(fmt.Sprintf(issueList[i]))
 
 						} else {
 							attachments = append(attachments, slack.Attachment{
@@ -262,6 +480,12 @@ func paramsFromAnnotation(str string) (map[string][]string, error) {
 func parseIssueState(stateOrID string) (string, int, error) {
 	if len(stateOrID) == 0 || len(strings.Fields(stateOrID)) > 1 {
 		return "", 0, fmt.Errorf("state/id must not be empty or many. msg me `help` for more information")
+	}
+	if !contains(supportedIssueStates, stateOrID) {
+		if i, err := strconv.Atoi(stateOrID); err == nil {
+			return "", i, nil
+		}
+		return "", 0, fmt.Errorf("invalid state or id: `%s`. msg me `help` for more information", stateOrID)
 	}
 	stat := strings.TrimSpace(stateOrID)
 	return stat, 0, nil
