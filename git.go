@@ -44,6 +44,7 @@ type GithubActions struct {
 var supportedTeamActions = []string{"list"}
 var supportedMemberActions = []string{"get", "add"}
 var supportedMemberOptions = []string{"team"}
+var ExcludeTeamName = []string{"legacy-team", "admin"}
 
 //var availableStates = []string{"open", "closed", "assigned", "unassigned"}
 
@@ -76,15 +77,15 @@ func validateUser(userName string, organization string) (bool, string, error) {
 		_, res, err := client.Users.Get(ctx, userName)
 		if err != nil {
 			reason = "Unknown User"
-			log.Info().Msg(fmt.Sprintf("Unable to find user `%s`, in the org `%s`", userName, organization))
+			log.Info().Msg(fmt.Sprintf("Unable to find user, in the org `%s`", organization))
 			return false, reason, err
 		}
 		if res.StatusCode != 200 {
-			log.Info().Msg(fmt.Sprintf("Unable to find user `%s`, in the org `%s`", userName, organization))
+			log.Info().Msg(fmt.Sprintf("Unable to find user, in the org `%s`", organization))
 			reason = "Unknown User"
 			return false, reason, err
 		} else {
-			log.Info().Msg(fmt.Sprintf("User found: %s", userName))
+			log.Info().Msg(fmt.Sprintf("User found"))
 			return true, "", nil
 		}
 	}
@@ -173,7 +174,9 @@ func ListTeams(Org string) ([]string, string, error) {
 		}
 		if len(teams) > 0 {
 			for _, team := range teams {
-				teamList = append(teamList, fmt.Sprintf("*<%s|%s>*\t*`%s`*\n", team.GetURL(), *team.Name, *team.Description))
+				if !contains(ExcludeTeamName, *team.Name) {
+					teamList = append(teamList, fmt.Sprintf("*<%s|%s>*\t*`%s`*\n", team.GetURL(), *team.Name, *team.Description))
+				}
 			}
 		} else {
 			message = fmt.Sprintf("No team found in Org: `\"%s\"`", Org)
