@@ -3,67 +3,82 @@ package slacker
 import (
 	"github.com/shomali11/commander"
 	"github.com/shomali11/proper"
+	"github.com/slack-go/slack"
+	"github.com/slack-go/slack/socketmode"
 )
 
 // CommandDefinition structure contains definition of the bot command
 type CommandDefinition struct {
 	Description       string
-	Example           string
-	AuthorizationFunc func(botCtx BotContext, request Request) bool
-	Handler           func(botCtx BotContext, request Request, response ResponseWriter)
+	Examples          []string
+	BlockID           string
+	AuthorizationFunc func(BotContext, Request) bool
+	Handler           func(BotContext, Request, ResponseWriter)
+	Interactive       func(InteractiveBotContext, *socketmode.Request, *slack.InteractionCallback)
+
+	// HideHelp will hide this command definition from appearing in the `help` results.
+	HideHelp bool
 }
 
-// NewBotCommand creates a new bot command object
-func NewBotCommand(usage string, definition *CommandDefinition) BotCommand {
-	command := commander.NewCommand(usage)
-	return &botCommand{
+// NewCommand creates a new bot command object
+func NewCommand(usage string, definition *CommandDefinition) Command {
+	return &command{
 		usage:      usage,
 		definition: definition,
-		command:    command,
+		cmd:        commander.NewCommand(usage),
 	}
 }
 
-// BotCommand interface
-type BotCommand interface {
+// Command interface
+type Command interface {
 	Usage() string
 	Definition() *CommandDefinition
 
-	Match(text string) (*proper.Properties, bool)
+	Match(string) (*proper.Properties, bool)
 	Tokenize() []*commander.Token
-	Execute(botCtx BotContext, request Request, response ResponseWriter)
+	Execute(BotContext, Request, ResponseWriter)
+	Interactive(InteractiveBotContext, *socketmode.Request, *slack.InteractionCallback)
 }
 
-// botCommand structure contains the bot's command, description and handler
-type botCommand struct {
+// command structure contains the bot's command, description and handler
+type command struct {
 	usage      string
 	definition *CommandDefinition
-	command    *commander.Command
+	cmd        *commander.Command
 }
 
 // Usage returns the command usage
-func (c *botCommand) Usage() string {
+func (c *command) Usage() string {
 	return c.usage
 }
 
-// Description returns the command description
-func (c *botCommand) Definition() *CommandDefinition {
+// Definition returns the command definition
+func (c *command) Definition() *CommandDefinition {
 	return c.definition
 }
 
 // Match determines whether the bot should respond based on the text received
-func (c *botCommand) Match(text string) (*proper.Properties, bool) {
-	return c.command.Match(text)
+func (c *command) Match(text string) (*proper.Properties, bool) {
+	return c.cmd.Match(text)
 }
 
 // Tokenize returns the command format's tokens
-func (c *botCommand) Tokenize() []*commander.Token {
-	return c.command.Tokenize()
+func (c *command) Tokenize() []*commander.Token {
+	return c.cmd.Tokenize()
 }
 
 // Execute executes the handler logic
-func (c *botCommand) Execute(botCtx BotContext, request Request, response ResponseWriter) {
+func (c *command) Execute(botCtx BotContext, request Request, response ResponseWriter) {
 	if c.definition == nil || c.definition.Handler == nil {
 		return
 	}
 	c.definition.Handler(botCtx, request, response)
+}
+
+// Interactive executes the interactive logic
+func (c *command) Interactive(botContext InteractiveBotContext, request *socketmode.Request, callback *slack.InteractionCallback) {
+	if c.definition == nil || c.definition.Interactive == nil {
+		return
+	}
+	c.definition.Interactive(botContext, request, callback)
 }

@@ -31,16 +31,15 @@ func (b *Bot) Start() error {
 		}
 	})
 
-	bot.Command("member <action> <github-id> <options>", &slacker.CommandDefinition{
-		Description: fmt.Sprintf("Runs the requested action %s on the github-id with options like team=<team name>) ", strings.Join(codeSlice(supportedMemberActions), ", ")),
-		Example:     "member add johns team=storage",
+	bot.Command("member {action} {github-id} <options>", &slacker.CommandDefinition{
+		Description: fmt.Sprintf("Runs the requested action %s against the *GIHUB-ID* (go to your github profile for your github id) with option team=<team name>). *`Please make sure that the member belongs to organization before adding`* ", strings.Join(codeSlice(supportedMemberActions), ", ")),
+		Examples:    []string{"member get johns", "member add johns team=storage"},
 		Handler: func(botCtx slacker.BotContext, request slacker.Request, response slacker.ResponseWriter) {
 			var err error
 			githubOrg := os.Getenv("GITHUB_ORG")
 			githubRepo := os.Getenv("GITHUB_REPO")
-			//user := botCtx.Event().User
 			channel := botCtx.Event().Channel
-			if !isDirectMessage(channel) {
+			if !isDirectMessage(channel.ID) {
 				err := response.Reply("this command is only accepted via direct message")
 				if err != nil {
 					log.Info().Msg("this command is only accepted via direct message")
@@ -100,9 +99,9 @@ func (b *Bot) Start() error {
 		},
 	})
 
-	bot.Command("team <action>", &slacker.CommandDefinition{
+	bot.Command("team {action}", &slacker.CommandDefinition{
 		Description: fmt.Sprintf("Run the requested action %s ", strings.Join(codeSlice(supportedTeamActions), ", ")),
-		Example:     "1) team list ",
+		Examples:    []string{"team list "},
 		Handler: func(botCtx slacker.BotContext, request slacker.Request, response slacker.ResponseWriter) {
 			var err error
 			githubOrg := os.Getenv("GITHUB_ORG")
@@ -110,7 +109,7 @@ func (b *Bot) Start() error {
 			//user := botCtx.Event().User
 			channel := botCtx.Event().Channel
 			attachments := []slack.Attachment{}
-			if !isDirectMessage(channel) {
+			if !isDirectMessage(channel.ID) {
 				err := response.Reply("this command is only accepted via direct message")
 				if err != nil {
 					log.Info().Msg("this command is only accepted via direct message")
@@ -183,9 +182,9 @@ func (b *Bot) Start() error {
 		},
 	})
 
-	bot.Command("labels <action>  <options>", &slacker.CommandDefinition{
-		Description: fmt.Sprintf("Run the requested action %s on github labels with different options like %s ", strings.Join(codeSlice(supportedLabelActions), ", "), strings.Join(codeSlice(supportedLabelOptions), ", ")),
-		Example:     "1) labels list  2) labels get 234",
+	bot.Command("labels {action} <options>", &slacker.CommandDefinition{
+		Description: fmt.Sprintf("Run the requested action %s against the given github issue with option %s=<github issue> ", strings.Join(codeSlice(supportedLabelActions), ", "), strings.Join(codeSlice(supportedLabelOptions), ", ")),
+		Examples:    []string{"labels list", "labels get issue=21"},
 		Handler: func(botCtx slacker.BotContext, request slacker.Request, response slacker.ResponseWriter) {
 			var err error
 			var issueNumber int
@@ -194,7 +193,7 @@ func (b *Bot) Start() error {
 			//user := botCtx.Event().User
 			channel := botCtx.Event().Channel
 			attachments := []slack.Attachment{}
-			if !isDirectMessage(channel) {
+			if !isDirectMessage(channel.ID) {
 				err := response.Reply("this command is only accepted via direct message")
 				if err != nil {
 					log.Info().Msg("this command is only accepted via direct message")
@@ -284,9 +283,9 @@ func (b *Bot) Start() error {
 		},
 	})
 
-	bot.Command("issue <action> <state_or_id> <options>", &slacker.CommandDefinition{
-		Description: fmt.Sprintf("Run the requested action %s on github issues with different options like %s ", strings.Join(codeSlice(supportedIssueActions), ", "), strings.Join(codeSlice(supportedIssueOptions), ", ")),
-		Example:     "1) issue get 234  2) issue list assignedto user=johns;noupdatesince=2022-07-01;labels=bug  3) issue list open noupdatesince=2022-07-01",
+	bot.Command("issue {action} {state_or_id} <options>", &slacker.CommandDefinition{
+		Description: fmt.Sprintf("Run the requested action %s against the given github issues with states %s or issue id with different options %s ", strings.Join(codeSlice(supportedIssueActions), ", "), strings.Join(codeSlice(supportedIssueStates), ", "), strings.Join(codeSlice(supportedIssueOptions), ", ")),
+		Examples:    []string{"issue list open", "issue list open labels=team/ESD;labels=year/2023", "issue list assigned", "issue get 234", "issue list createdby user=johns", "issue list assignedto user=johns;noupdatesince=2023-01-01;labels=team/ESD,  where user=<github-id>", "issue list assignedto user=johns;noupdatesince=2023-01-01;labels=invalid;labels=team/ESD,  where user=<github-id>", "issue list open noupdatesince=2022-07-01"},
 		Handler: func(botCtx slacker.BotContext, request slacker.Request, response slacker.ResponseWriter) {
 			var err error
 			var usr string
@@ -296,7 +295,7 @@ func (b *Bot) Start() error {
 			//user := botCtx.Event().User
 			channel := botCtx.Event().Channel
 			attachments := []slack.Attachment{}
-			if !isDirectMessage(channel) {
+			if !isDirectMessage(channel.ID) {
 				err := response.Reply("this command is only accepted via direct message")
 				if err != nil {
 					log.Info().Msg("this command is only accepted via direct message")
@@ -358,6 +357,7 @@ func (b *Bot) Start() error {
 					var list string
 					response.Reply(msg)
 					count := 60
+					list = list + fmt.Sprintf("*ID *\t *Title*\n")
 					for i := 0; i < len(issueList); i++ {
 						attachments = []slack.Attachment{}
 						if i < count {
@@ -417,8 +417,7 @@ func isDirectMessage(channel string) bool {
 }
 
 func parseActions(action string, supportedActions []string) (string, error) {
-	//params, err := paramsFromAnnotation(actions)
-	println("action:", action)
+	//params, _ := paramsFromAnnotation(action)
 	if len(action) == 0 || len(strings.Fields(action)) > 1 {
 		return "", fmt.Errorf("Action must not be empty or many")
 	}
@@ -430,7 +429,6 @@ func parseActions(action string, supportedActions []string) (string, error) {
 }
 func parseOptions(options string, supportedOptions []string) (map[string][]string, error) {
 	params, err := paramsFromAnnotation(options)
-	fmt.Printf("params from parse: %s", params)
 	if err != nil {
 		return nil, fmt.Errorf("options could not be parsed: %v", err)
 	}
@@ -447,7 +445,6 @@ func parseOptions(options string, supportedOptions []string) (map[string][]strin
 			return nil, fmt.Errorf("unrecognized option: %s", key)
 		}
 	}
-	println("params:%s", params)
 	return params, nil
 }
 func paramsFromAnnotation(str string) (map[string][]string, error) {
@@ -456,7 +453,6 @@ func paramsFromAnnotation(str string) (map[string][]string, error) {
 	if len(str) == 0 {
 		return values, nil
 	}
-
 	for _, part := range strings.Split(str, ";") {
 		if len(part) == 0 {
 			return nil, fmt.Errorf("parameter may not be empty")

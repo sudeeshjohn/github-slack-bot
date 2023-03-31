@@ -210,7 +210,7 @@ func (g GithubActions) actOnLabel() (bool, []string, string, error) {
 				return false, labelList, message, fmt.Errorf("invalid issue. Error: %s", err)
 			}
 		}
-		labelList, _, err = ListLabelsByIssue(g.Organization, g.Repository, g.Label.IssueNumber)
+		labelList, message, err = ListLabelsByIssue(g.Organization, g.Repository, g.Label.IssueNumber)
 		return true, labelList, message, nil
 
 	case g.Label.Action == "list":
@@ -350,7 +350,7 @@ func ListTeams(Org string) ([]string, string, error) {
 		}
 		lstopt.Page = resp.NextPage
 	}
-	return teamList, fmt.Sprintf("%d team/s found", len(teamList)), err
+	return teamList, fmt.Sprintf("*`%d team/s found`*", len(teamList)), err
 }
 
 func (g GithubActions) actOnTeam() (bool, []string, string, error) {
@@ -394,10 +394,10 @@ func ListLabelsByIssue(Org string, Repo string, Issue int) ([]string, string, er
 		}
 		if len(labels) > 0 {
 			for _, label := range labels {
-				labelList = append(labelList, fmt.Sprintf("*<%s|%s>*\t*`%s`*\n", label.GetURL(), *label.Name, *label.Description))
+				labelList = append(labelList, fmt.Sprintf("*<%s|%s>*\n", label.GetURL(), label.GetName()))
 			}
 		} else {
-			message = fmt.Sprintf("No labels found in Org: `\"%s\"`, Repo: `\"%s\"`", Org, Repo)
+			message = fmt.Sprintf("No labels found for issue : `\"%d\"`", Issue)
 			return labelList, message, fmt.Errorf("no lables found, Error: %s", err)
 		}
 		if resp.NextPage == 0 {
@@ -405,7 +405,7 @@ func ListLabelsByIssue(Org string, Repo string, Issue int) ([]string, string, er
 		}
 		lstopt.Page = resp.NextPage
 	}
-	return labelList, fmt.Sprintf("%d labels found", len(labelList)), err
+	return labelList, fmt.Sprintf("*`%d labels found for issue %d`*", len(labelList), Issue), err
 }
 func ListLabels(Org string, Repo string) ([]string, string, error) {
 	var labelList []string
@@ -425,7 +425,7 @@ func ListLabels(Org string, Repo string) ([]string, string, error) {
 		}
 		if len(labels) > 0 {
 			for _, label := range labels {
-				labelList = append(labelList, fmt.Sprintf("*<%s|%s>*\t*`%s`*\n", label.GetURL(), *label.Name, *label.Description))
+				labelList = append(labelList, fmt.Sprintf("*<%s|%s>*\t*`%s`*\n", label.GetURL(), label.GetName(), label.GetDescription()))
 			}
 		} else {
 			message = fmt.Sprintf("No labels found in Org: `\"%s\"`, Repo: `\"%s\"`", Org, Repo)
@@ -436,7 +436,7 @@ func ListLabels(Org string, Repo string) ([]string, string, error) {
 		}
 		lstopt.Page = resp.NextPage
 	}
-	return labelList, fmt.Sprintf("%d labels found", len(labelList)), err
+	return labelList, fmt.Sprintf("*`%d labels found`*", len(labelList)), err
 }
 func issuesListByRepo(opts *github.IssueListByRepoOptions, Org string, Repo string, since time.Time) ([]string, string, error) {
 	var issueList []string
@@ -453,6 +453,7 @@ func issuesListByRepo(opts *github.IssueListByRepoOptions, Org string, Repo stri
 		if len(issues) > 0 {
 			for _, issu := range issues {
 				if !issu.IsPullRequest() {
+					//if issu.Assignee.GetLogin() == opts.Assignee { //added newly
 					if !since.IsZero() {
 						if issu.UpdatedAt.Sub(since) < 0 {
 							issueList = append(issueList, fmt.Sprintf("*<%s|%d>*\t*`%s`*\n", issu.GetHTMLURL(), *issu.Number, *issu.Title))
@@ -460,6 +461,7 @@ func issuesListByRepo(opts *github.IssueListByRepoOptions, Org string, Repo stri
 					} else {
 						issueList = append(issueList, fmt.Sprintf("*<%s|%d>*\t*`%s`*\n", issu.GetHTMLURL(), *issu.Number, *issu.Title))
 					}
+					//}
 				}
 			}
 		} else {
@@ -471,7 +473,7 @@ func issuesListByRepo(opts *github.IssueListByRepoOptions, Org string, Repo stri
 		}
 		opts.ListOptions.Page = resp.NextPage
 	}
-	return issueList, fmt.Sprintf("%d issues found", len(issueList)), err
+	return issueList, fmt.Sprintf("*`%d issues found`*", len(issueList)), err
 }
 
 func (g GithubActions) issueGet() (bool, string, error) {
@@ -495,7 +497,7 @@ func (g GithubActions) issueGet() (bool, string, error) {
 	for _, assig := range issue.Assignees {
 		allAssignees = allAssignees + fmt.Sprintf("%s, ", assig.GetLogin())
 	}
-	return true, fmt.Sprintf("Title:\t*<%s|%d>* *`%s`*\nAssigned To:\t*`%s`*\nState:\t*`%s`*\nLast update on:\t*`%s`*\nBody:\n \t%s\n", issue.GetHTMLURL(), *issue.Number, *issue.Title, allAssignees, *issue.State, issue.GetUpdatedAt(), issue.GetBody()), nil
+	return true, fmt.Sprintf("*ID*:\t*<%s|%d>*\n*Title*: *`%s`*\n*Assigned To:*\t*`%s`*\n*State:*\t*`%s`*\n*Last update on:*\t*`%s`*\n*Body:*\n \t%s\n", issue.GetHTMLURL(), *issue.Number, *issue.Title, allAssignees, *issue.State, issue.GetUpdatedAt(), issue.GetBody()), nil
 }
 
 func (g GithubActions) addMember() (bool, string, error) {
